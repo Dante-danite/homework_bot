@@ -138,23 +138,14 @@ def main():
 
         except exceptions.TelegramSendErrorException as error:
             logging.error(error)
-        except exceptions.ApiRequestException as error:
-            message_error = f'Ошибка отправки запроса на сервер: {error}'
-        except exceptions.NotExistTypeException as error:
-            message_error = f'Ошибка типа: {error}'
-        except exceptions.NotExistKeyException as error:
-            message_error = f'Ошибка ключа: {error}'
-        except exceptions.UnExpectedResponseException as error:
-            message_error = f'Неизвестный тип ответа сервера: {error}'
         except Exception as error:
             message_error = f"Сбой в работе программы: {error}"
+            logging.error(message_error)
+            try:
+                send_message(bot, message_error)
+            except exceptions.TelegramSendErrorException as error:
+                logging.error(error)
         finally:
-            if message_error:
-                logging.error(message_error)
-                try:
-                    send_message(bot, message_error)
-                except exceptions.TelegramSendErrorException as error:
-                    logging.error(error)
             time.sleep(RETRY_PERIOD)
 
 
