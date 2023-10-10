@@ -48,7 +48,7 @@ def send_message(bot: telegram.Bot, message):
     except TelegramError as error:
         message = f'Не удалось отправить сообщение {error}'
         logging.error(message)
-        exceptions.TelegramSendErrorException(message)
+        raise exceptions.TelegramSendErrorException(message)
 
 
 def get_api_answer(timestamp):
@@ -135,17 +135,19 @@ def main():
                 last_status = message
             logging.info(f'\n timestamp {timestamp} \n')
             timestamp = response.get('current_date')
-
         except exceptions.TelegramSendErrorException as error:
             logging.error(error)
+        except exceptions.ApiRequestException as error:
+            message_error = f"Запрос к апи вернул ошибку: {error}"
         except Exception as error:
-            message_error = f"Сбой в работе программы: {error}"
-            logging.error(message_error)
-            try:
-                send_message(bot, message_error)
-            except exceptions.TelegramSendErrorException as error:
-                logging.error(error)
+            message_error = f"Cбой в работе программы: {error}"
         finally:
+            if message_error:
+                logging.error(message_error)
+                try:
+                    send_message(bot, message_error)
+                except exceptions.TelegramSendErrorException as error:
+                    logging.error(error)
             time.sleep(RETRY_PERIOD)
 
 
