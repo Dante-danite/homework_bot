@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from http import HTTPStatus
+from logging.handlers import RotatingFileHandler
 
 import requests
 import telegram
@@ -32,8 +33,7 @@ HOMEWORK_VERDICTS = {
 
 def check_tokens():
     """Проверяет доступность переменных окружения, необходимых для работы."""
-    tokens = ['TELEGRAM_TOKEN', 'PRACTICUM_TOKEN', 'TELEGRAM_CHAT_ID']
-    for token in tokens:
+    for token in ENV_VARS:
         if not globals()[token]:
             raise exceptions.TokenNotFoundException(
                 f'{token} отсутствует')
@@ -60,10 +60,12 @@ def get_api_answer(timestamp):
     except requests.RequestException:
         raise exceptions.ApiRequestException('Исключение из-за ошибки'
                                              ' GET-запроса к эндпоинту')
+
+    if homework.status_code != HTTPStatus.OK:
+        raise exceptions.UnExpectedResponseException()
+
     homework_json = homework.json()
     logging.info(f'Получен ответ {homework_json}')
-    if homework.status_code != HTTPStatus.OK:
-        raise exceptions.UnExpectedResponseException(homework_json)
     return homework_json
 
 
@@ -97,12 +99,14 @@ def parse_status(homework):
     if not homework_name:
         raise exceptions.NotExistKeyException(
             'Нет значения под ключем homework_name в ответе API')
-    if homework_status not in HOMEWORK_VERDICTS:
-        raise exceptions.NotExistKeyException(
-            'Нет ключа homework_status в ответе API')
+
     if 'status' not in homework:
         raise exceptions.NotExistKeyException(
             'Ключа "status" нет в словаре')
+
+    if homework_status not in HOMEWORK_VERDICTS:
+        raise exceptions.NotExistKeyException(
+            'Нет ключа homework_status в ответе API')
 
     verdict = HOMEWORK_VERDICTS.get(homework_status)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -119,7 +123,6 @@ def main():
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     last_status = None
-    message_error = None
     while True:
         try:
             response = get_api_answer(timestamp)
@@ -137,17 +140,11 @@ def main():
             timestamp = response.get('current_date')
         except exceptions.TelegramSendErrorException as error:
             logging.error(error)
-        except exceptions.ApiRequestException as error:
-            message_error = f"Запрос к апи вернул ошибку: {error}"
         except Exception as error:
-            message_error = f"Cбой в работе программы: {error}"
+            logging.error(f"Cбой в работе программы: {error}")
+            send_message(bot, f"Cбой в работе программы:"
+                              f" {error}")
         finally:
-            if message_error:
-                logging.error(message_error)
-                try:
-                    send_message(bot, message_error)
-                except exceptions.TelegramSendErrorException as error:
-                    logging.error(error)
             time.sleep(RETRY_PERIOD)
 
 
@@ -156,6 +153,9 @@ if __name__ == '__main__':
         level=logging.DEBUG,
         format='%(asctime)s | %(levelname)s - %(funcName)s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
-        stream=sys.stdout
+        handlers=[RotatingFileHandler(filename='./logs/file.log',
+                                      mode='a+', maxBytes=512000,
+                                      backupCount=4),
+                  logging.StreamHandler()]
     )
     main()
